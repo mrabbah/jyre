@@ -13,8 +13,9 @@ import java.nio.channels.DatagramChannel;
 import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import zmq.util.Objects;
 
@@ -34,16 +35,12 @@ public class ZreBeacon {
         RUNNING,
     }
 
-    public static final long DEFAULT_BROADCAST_INTERVAL = 1000L;
-    public static final String DEFAULT_BROADCAST_HOST = "255.255.255.255"; // is this the source/interface address? or the broadcast address
     private static final InetAddress DEFAULT_BROADCAST_HOST_ADDRESS;
     private static final InetAddress DEFAULT_BROADCAST_ADDRESS;
-    private static final int DEFAULT_UDP_PORT = 5670;
-    private static final byte[] DEFAULT_PREFIX = new byte[]{'Z', 'R', 'E', 0x01};
 
     static {
         try {
-            DEFAULT_BROADCAST_HOST_ADDRESS = InetAddress.getByName(DEFAULT_BROADCAST_HOST);
+            DEFAULT_BROADCAST_HOST_ADDRESS = InetAddress.getByName(ZreConstants.DEFAULT_BROADCAST_HOST);
             DEFAULT_BROADCAST_ADDRESS = InetAddress.getByName("0.0.0.0");
         } catch (UnknownHostException e) {
             throw new IllegalArgumentException("Invalid default broadcast address", e);
@@ -51,35 +48,27 @@ public class ZreBeacon {
     }
 
     private final AtomicReference<UUID> uuid = new AtomicReference<>();
-    private final AtomicInteger mailBoxPort = new AtomicInteger();
+    private AtomicInteger mailBoxPort = new AtomicInteger();
     private final BroadcastClient broadcastClient;
     private final BroadcastServer broadcastServer;
-    private final AtomicReference<byte[]> prefix = new AtomicReference<>();
-    private final AtomicLong broadcastInterval = new AtomicLong(DEFAULT_BROADCAST_INTERVAL);
     private final AtomicReference<Listener> listener = new AtomicReference<>();
     private final AtomicReference<Thread.UncaughtExceptionHandler> clientExHandler = new AtomicReference<>();
     private final AtomicReference<Thread.UncaughtExceptionHandler> serverExHandler = new AtomicReference<>();
     private ZreBeaconStatus status;
 
     public ZreBeacon(UUID uuid, InetAddress broadcastAddress, InetAddress serverAddress,
-            int port, long broadcastInterval, boolean ignoreLocalAddress,
-             boolean ignoreOwnMessage, int mailBoxPort, byte[] prefix) {
+            int port, boolean ignoreLocalAddress,
+            AtomicReference<Boolean> ignoreOwnMessage, AtomicInteger mailBoxPort) {
         Objects.requireNonNull(broadcastAddress, "Host cannot be null");
         Objects.requireNonNull(serverAddress, "Server address cannot be null");
         Objects.requireNonNull(uuid, "UUID cannot be null");
         Objects.requireNonNull(mailBoxPort, "Mail box tcp port cannot be null");
-        Objects.requireNonNull(prefix, "Prefix cannot be null");
+        Objects.requireNonNull(ignoreOwnMessage, "Ignore Own message cannot be null");
         this.status = ZreBeaconStatus.IDLE;
-        this.broadcastInterval.set(broadcastInterval);
         this.uuid.set(uuid);
-        this.mailBoxPort.set(mailBoxPort);
-        this.prefix.set(prefix);
+        this.mailBoxPort = mailBoxPort;
         broadcastServer = new BroadcastServer(port, ignoreLocalAddress, ignoreOwnMessage);
-        broadcastClient = new BroadcastClient(serverAddress, broadcastAddress, port, this.broadcastInterval);
-    }
-
-    public void setMailBoxPort(int mailBoxPort) {
-        this.mailBoxPort.set(mailBoxPort);
+        broadcastClient = new BroadcastClient(serverAddress, broadcastAddress, port);
     }
 
     /**
@@ -94,13 +83,11 @@ public class ZreBeacon {
 
         private InetAddress broadcastHost = DEFAULT_BROADCAST_HOST_ADDRESS;
         private InetAddress interfaceAddr = DEFAULT_BROADCAST_ADDRESS;
-        private int port = DEFAULT_UDP_PORT;
-        private long broadcastInterval = DEFAULT_BROADCAST_INTERVAL;
-        private byte[] prefix = DEFAULT_PREFIX;
+        private int port = ZreConstants.DEFAULT_UDP_PORT;
         private boolean ignoreLocalAddress = false;
-        private boolean ignoreOwnMessage = true;
+        private AtomicReference<Boolean> ignoreOwnMessage;
         private UUID uuid;
-        private int mailBoxPort;
+        private AtomicInteger mailBoxPort;
         private Listener listener = null;
 
         public Builder port(int port) {
@@ -123,7 +110,7 @@ public class ZreBeacon {
             return this;
         }
 
-        public Builder ignoreOwnMessage(boolean ignoreOwnMessage) {
+        public Builder ignoreOwnMessage(AtomicReference<Boolean> ignoreOwnMessage) {
             this.ignoreOwnMessage = ignoreOwnMessage;
             return this;
         }
@@ -133,18 +120,8 @@ public class ZreBeacon {
             return this;
         }
 
-        public Builder mailBoxPort(int mailBoxPort) {
+        public Builder mailBoxPort(AtomicInteger mailBoxPort) {
             this.mailBoxPort = mailBoxPort;
-            return this;
-        }
-
-        public Builder broadcastInterval(long broadcastInterval) {
-            this.broadcastInterval = broadcastInterval;
-            return this;
-        }
-
-        public Builder prefix(byte[] prefix) {
-            this.prefix = Arrays.copyOf(prefix, prefix.length);
             return this;
         }
 
@@ -156,7 +133,8 @@ public class ZreBeacon {
         public ZreBeacon build() {
 
             ZreBeacon zbeacon = new ZreBeacon(uuid, broadcastHost, interfaceAddr,
-                    port, broadcastInterval, ignoreLocalAddress, ignoreOwnMessage, mailBoxPort, prefix);
+                    port, ignoreLocalAddress, ignoreOwnMessage,
+                    mailBoxPort);
 
             if (listener != null) {
                 zbeacon.setListener(listener);
@@ -228,12 +206,11 @@ public class ZreBeacon {
 
         private final InetSocketAddress broadcastAddress;
         private final InetAddress interfaceAddress;
-        private final AtomicLong broadcastInterval;
         private boolean isRunning;
         private Thread thread;
+        private final Logger LOG = Logger.getLogger(BroadcastClient.class.getName());
 
-        public BroadcastClient(InetAddress interfaceAddress, InetAddress broadcastAddress, int port, AtomicLong broadcastInterval) {
-            this.broadcastInterval = broadcastInterval;
+        public BroadcastClient(InetAddress interfaceAddress, InetAddress broadcastAddress, int port) {
             this.broadcastAddress = new InetSocketAddress(broadcastAddress, port);
             this.interfaceAddress = interfaceAddress;
         }
@@ -249,33 +226,27 @@ public class ZreBeacon {
                 isRunning = true;
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                baos.write(ZreBeacon.this.prefix.get());
+                ZreUtil.setPrefix(baos);
 
-                ByteBuffer uuidBuffer = ByteBuffer.wrap(new byte[16]);
-                UUID uuid = ZreBeacon.this.uuid.get();
-                uuidBuffer.putLong(uuid.getMostSignificantBits());
-                uuidBuffer.putLong(uuid.getLeastSignificantBits());
-                baos.write(uuidBuffer.array());
+                ZreUtil.setUUID(baos, ZreBeacon.this.uuid.get());
 
-                byte[] tcpMailBoxBytePort = new byte[2];
                 int tcpPort = ZreBeacon.this.mailBoxPort.get();
 
-                byte[] myBytes = ByteBuffer.allocate(4).putInt(tcpPort).array();
-
-                tcpMailBoxBytePort[0] = myBytes[2];
-                tcpMailBoxBytePort[1] = myBytes[3];
-                baos.write(tcpMailBoxBytePort);
+                ZreUtil.setNumber2(baos, tcpPort);
 
                 byte[] beacon = baos.toByteArray();
 
                 while (!Thread.interrupted() && isRunning) {
                     try {
                         broadcastChannel.send(ByteBuffer.wrap(beacon), broadcastAddress);
-                        Thread.sleep(broadcastInterval.get());
+                        Thread.sleep(ZreConstants.DEFAULT_BROADCAST_INTERVAL);
                     } catch (InterruptedException | ClosedByInterruptException interruptedException) {
                         // Re-interrupt the thread so the caller can handle it.
                         Thread.currentThread().interrupt();
                         break;
+                    } catch (IOException ioException) {
+                        LOG.log(Level.SEVERE, "Interface changed", ioException);
+                        throw new RuntimeException(ioException);
                     } catch (Exception exception) {
                         throw new RuntimeException(exception);
                     }
@@ -297,11 +268,11 @@ public class ZreBeacon {
 
         private final DatagramChannel handle;            // Socket for send/recv
         private final boolean ignoreLocalAddress;
-        private final boolean ignoreOwnMessage;
+        private final AtomicReference<Boolean> ignoreOwnMessage;
         private Thread thread;
         private boolean isRunning;
 
-        public BroadcastServer(int port, boolean ignoreLocalAddress, boolean ignoreOwnMessage) {
+        public BroadcastServer(int port, boolean ignoreLocalAddress, AtomicReference<Boolean> ignoreOwnMessage) {
             this.ignoreLocalAddress = ignoreLocalAddress;
             this.ignoreOwnMessage = ignoreOwnMessage;
 
@@ -321,8 +292,7 @@ public class ZreBeacon {
             ByteBuffer buffer = ByteBuffer.allocate(65535);
             SocketAddress sender;
             isRunning = true;
-            byte[] prefix = ZreBeacon.this.prefix.get();
-            int minAllowedPacketSize = prefix.length + 16 + 2;
+            int minAllowedPacketSize = ZreConstants.DEFAULT_PREFIX.length + 16 + 2;
             try {
                 while (!Thread.interrupted() && isRunning) {
                     buffer.clear();
@@ -345,30 +315,18 @@ public class ZreBeacon {
                         buffer.flip();
                         buffer.mark();
 
-                        byte[] prefixTry = new byte[prefix.length];
-                        buffer.get(prefixTry);
-                        if (Arrays.equals(prefix, prefixTry)) {
-                            byte[] remoteByteUUid = new byte[16];
+                        byte[] prefixTry = ZreUtil.getPrefix(buffer);
+                        if (Arrays.equals(ZreConstants.DEFAULT_PREFIX, prefixTry)) {
 
-                            buffer.get(remoteByteUUid);
-                            ByteBuffer bb = ByteBuffer.wrap(remoteByteUUid);
-                            long high = bb.getLong();
-                            long low = bb.getLong();
-                            UUID remoteUuid = new UUID(high, low);
+                            UUID remoteUuid = ZreUtil.getUUID(buffer);
 
-                            if (ignoreOwnMessage
+                            if (ignoreOwnMessage.get()
                                     && (ZreBeacon.this.uuid.get().compareTo(remoteUuid) == 0)) {
 
                                 continue;
                             }
-                            byte[] remoteBytePort = new byte[2];
 
-                            buffer.get(remoteBytePort);
-
-                            byte[] remoteByteMailBoxPort
-                                    = new byte[]{0, 0, remoteBytePort[0], remoteBytePort[1]};
-                            ByteBuffer wrapped = ByteBuffer.wrap(remoteByteMailBoxPort);
-                            int remoteMailBoxPort = wrapped.getInt();
+                            int remoteMailBoxPort = ZreUtil.getNumber2(buffer);
 
                             byte[] data = new byte[buffer.remaining()];
                             buffer.get(data);
@@ -392,11 +350,4 @@ public class ZreBeacon {
 
     }
 
-    public long getBroadcastInterval() {
-        return broadcastInterval.get();
-    }
-
-    public void setBroadcastInterval(long broadcastInterval) {
-        this.broadcastInterval.set(broadcastInterval);
-    }
 }
