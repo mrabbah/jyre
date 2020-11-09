@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.zeromq.ZMQ.Poller;
 import org.zeromq.ZreBeacon.ZreBeaconStatus;
 import org.zeromq.ZMQ.Socket;
 
@@ -22,8 +21,8 @@ public class Jyre implements ZreBeacon.Listener {
     private static final Logger LOG = Logger.getLogger(Jyre.class.getName());
 
     private ZreBeacon beacon;
-    private final Map<String, Peer> peers = new HashMap<>();
-    private final Map<String, Set<String>> peersGroups = new HashMap<>();
+    private final Map<String, Peer> peers = new HashMap<>(); // List of all my peers
+    private final Map<String, Set<String>> peersGroups = new HashMap<>(); // List of groups and for each groupe peers uuid that belong to this group
     private ZreRouter zreRouter;
     private static Jyre instance;
 
@@ -76,24 +75,25 @@ public class Jyre implements ZreBeacon.Listener {
             AtomicReference<Boolean> isRunning, ZContext context) {
         zreRouter = new ZreRouter(this,
                 (ZreMessage msg) -> {
-                    LOG.log(Level.INFO, msg.toString());
+                    // LOG.log(Level.INFO, msg.toString());
+                    System.out.println(msg.toString());
 
                     /*switch(msg.getEventType()) {
             case ZreEventType.CONNECT:
-                Peer peer = peers.get(msg.getUuid().toString());
-                if(peer != null) {
-                    
-                } else {
-                    
-                }
-                break;
+            Peer peer = peers.get(msg.getUuid().toString());
+            if(peer != null) {
+            
+            } else {
+            
+            }
+            break;
             case ZreEventType.HELLO:
-                break;
+            break;
             case ZreEventType.PING:
-                break;
+            break;
             case ZreEventType.PING_OK:
-                break;
-        }*/
+            break;
+            }*/
                 });
     }
 
@@ -107,9 +107,17 @@ public class Jyre implements ZreBeacon.Listener {
                         + uuid.toString());
                 zreRouter.thread.setDaemon(true);
                 zreRouter.thread.start();
-                Thread.sleep(1000);
             }
             if (beacon.getStatus() == ZreBeaconStatus.IDLE) {
+                // LOG.info("Waiting DEALER and ROUTER start before broadcasting beacons");
+                System.out.println("Waiting DEALER and ROUTER start before broadcasting beacons");
+                while (!isRunning.get()) { // Waiting DEALER and ROUTER start before broadcasting beacons
+                    System.out.print(".");
+                    Thread.sleep(10);
+                }
+                System.out.println(".");
+                // LOG.info("Starting broadcasting beacons");
+                System.out.println("Starting broadcasting beacons");
                 beacon.start();
             }
         }
@@ -117,11 +125,14 @@ public class Jyre implements ZreBeacon.Listener {
     }
 
     public void stop() throws InterruptedException {
+        System.out.println("Stopping the node");
         if (isRunning.get()) {
             if (beacon.getStatus() == ZreBeaconStatus.RUNNING) {
+                System.out.println("Stopping braodcasting Beacons");
                 beacon.stop();
             }
             if (zreRouter.thread != null) {
+                System.out.println("Stopping the Router");
                 ignoreOwnMessage.set(Boolean.FALSE);
                 zreRouter.thread.interrupt();
                 zreRouter.thread.join();
@@ -131,13 +142,18 @@ public class Jyre implements ZreBeacon.Listener {
     }
 
     public void disconnect() throws InterruptedException {
+        System.out.println("Disconnecting from the Matrix...");
         this.mailBoxPort.set(0);
+        System.out.println("Broadcasting the disconnect event on beacons");
         Thread.sleep(ZreConstants.DEFAULT_BROADCAST_INTERVAL * 5);
+        System.out.println("Disconnecting peers");
         for (Map.Entry<String, Peer> entry : peers.entrySet()) {
             Peer peer = entry.getValue();
+            System.out.println("Disconnecting peer " + peer.name);
             peer.disconnect();
         }
         stop();
+        System.out.println("Closing ZMQ Context");
         context.close();
     }
 
@@ -146,18 +162,24 @@ public class Jyre implements ZreBeacon.Listener {
         if (!ignoreOwnMessage.get() && remoteUuid.toString().equals(uuid.toString())) {
             address = sender.getHostAddress();
             ignoreOwnMessage.set(Boolean.TRUE);
-            LOG.log(Level.INFO, "{0} endpoint updated = {1}",
-                    new Object[]{uuid.toString(), getEndpoint()});
+            /*LOG.log(Level.INFO, "{0} endpoint updated = {1}",
+                    new Object[]{uuid.toString(), getEndpoint()});*/
+            System.out.println(uuid.toString() + " endpoint updated = " + getEndpoint());
         } else {
             Peer peer = peers.get(remoteUuid.toString());
             if (peer != null) {
                 String remoteEndpoint = "tcp://" + sender.getHostAddress() + ":" + remoteMailBoxPort;
-                if (peer.endpoint.equals(remoteEndpoint)) {
+                if (remoteMailBoxPort == 0) {
+                    System.out.println("Peer " + remoteUuid.toString() + " are leaving the Matrix");
+                    peer.disconnect();
+                    leaveMyGroups(peer);
+                    peers.remove(peer.uuid.toString());
+                } else if (peer.getEndpoint().equals(remoteEndpoint)) {
                     peer.refresh();
                 } else {
                     try {
                         peer.disconnect();
-                        leaveMyGroups(peer);
+                        // leaveMyGroups(peer);
                         peer = new Peer(sender, remoteUuid, remoteMailBoxPort, data, this);
                         peer.connect();
                         peer.refresh();
@@ -167,7 +189,8 @@ public class Jyre implements ZreBeacon.Listener {
                     }
                 }
             } else {
-                LOG.log(Level.INFO, "------> New peer contact us {0}", remoteUuid.toString());
+                // LOG.log(Level.INFO, "------> New peer contact us {0}", remoteUuid.toString());
+                System.out.println("UDP: New peer contact us " + remoteUuid.toString());
                 try {
                     peer = new Peer(sender, remoteUuid, remoteMailBoxPort, data, this);
                     peers.put(remoteUuid.toString(), peer);
@@ -191,14 +214,13 @@ public class Jyre implements ZreBeacon.Listener {
         }
     }
 
-    private void leaveAllGroups(Peer peer) {
+    /*private void leaveAllGroups(Peer peer) {
         for (Map.Entry<String, Set<String>> entry : peersGroups.entrySet()) {
             Set<String> peersUUID = entry.getValue();
             peersUUID.remove(peer.uuid.toString());
 
         }
-    }
-
+    }*/
     private void joinMyGroups(Peer peer) {
         for (String group : peer.groups) {
             Set<String> partners = peersGroups.get(group);
@@ -217,7 +239,7 @@ public class Jyre implements ZreBeacon.Listener {
         private final RouterListener listner;
         private final Jyre instance;
         private Socket router;
-        private Thread[] threads;
+        private final Thread[] threads;
         // private Poller poller;
 
         private final Logger LOG = Logger.getLogger(ZreRouter.class.getName());
@@ -227,44 +249,52 @@ public class Jyre implements ZreBeacon.Listener {
             this.instance = instance;
             this.instance.mailBoxPort.set(-1);
             this.listner = listner;
+            this.threads = new Thread[ZreConstants.DEFAULT_NB_WORKERS];
         }
 
         @Override
         public void run() {
-
+            System.out.println("Runngin the ROUTER....");
             try {
                 router = instance.context.createSocket(SocketType.ROUTER);
                 instance.mailBoxPort.set(router.bindToRandomPort("tcp://" + ZreConstants.DEFAULT_LISTENING_INTERFACE));
                 router.setRouterHandover(true);
-                instance.isRunning.set(Boolean.TRUE);
-                LOG.log(Level.INFO, "{0} current endpoint = {1}",
-                        new Object[]{instance.uuid.toString(), instance.getEndpoint()});
+                /*LOG.log(Level.INFO, "{0} current endpoint = {1}",
+                        new Object[]{instance.uuid.toString(), instance.getEndpoint()});*/
+                System.out.println(instance.uuid.toString() + " current ROUTER endpoint = " + instance.getEndpoint());
 
                 //  Backend socket talks to workers over inproc
+                System.out.println("Creating the dealer...");
                 Socket backend = instance.context.createSocket(SocketType.DEALER);
                 backend.bind("inproc://" + instance.name);
 
-                threads = new Thread[5];
                 //  Launch pool of worker threads, precise number is not critical
-                for (int threadNbr = 0; threadNbr < 5; threadNbr++) {
-                    thread = new Thread(new Worker(instance, this.listner));
-                    thread.start();
+                System.out.println("Lunching pool of worker threads");
+                for (int threadNbr = 0; threadNbr < ZreConstants.DEFAULT_NB_WORKERS; threadNbr++) {
+                    threads[threadNbr] = new Thread(new Worker(instance, this.listner, "Worker-" + threadNbr));
+                    threads[threadNbr].start();
                 }
 
+                instance.isRunning.set(Boolean.TRUE);
+                System.out.println("Node is running");
                 //  Connect backend to frontend via a proxy
+                System.out.println("Connect backend (Worker) to the frontend (Dealer) via a proxy");
                 ZMQ.proxy(router, backend, null);
 
             } finally {
+                System.out.println("Stoping the ROUTER...");
                 instance.isRunning.set(Boolean.FALSE);
                 // poller.unregister(router);
-                /*for (int threadNbr = 0; threadNbr < 5; threadNbr++) {
+                System.out.println("Stoping the Workers...");
+                for (int threadNbr = 0; threadNbr < ZreConstants.DEFAULT_NB_WORKERS; threadNbr++) {
                     try {
-                        thread.interrupt();
-                        thread.join();
+                        threads[threadNbr].interrupt();
+                        threads[threadNbr].join();
                     } catch (InterruptedException ex) {
                         LOG.log(Level.SEVERE, null, ex);
                     }
-                }*/
+                }
+                System.out.println("Closing the ROUTER ....");
                 router.close();
                 thread = null;
             }
@@ -278,43 +308,59 @@ public class Jyre implements ZreBeacon.Listener {
         private final Jyre instance;
         private final Logger LOG = Logger.getLogger(Worker.class.getName());
         private final RouterListener listner;
+        private final String name;
         Socket worker;
 
-        public Worker(Jyre instance, RouterListener listner) {
+        public Worker(Jyre instance, RouterListener listner, String name) {
             this.instance = instance;
             this.listner = listner;
+            this.name = name;
         }
 
         @Override
         public void run() {
+            System.out.println(this.name + " Start running...");
             try {
+                System.out.println("Creating the DEALER SOCKET in to " + this.name);
                 worker = instance.context.createSocket(SocketType.DEALER);
                 worker.connect("inproc://" + instance.name);
                 ByteBuffer identityBuffer;
                 ByteBuffer contentBuffer;
                 while (!Thread.currentThread().isInterrupted() && instance.isRunning.get()) {
                     //  The DEALER socket gives us the address envelope and message
+                    System.out.println(this.name + " waiting to receive a message...");
                     ZMsg msg = ZMsg.recvMsg(worker);
+                    System.out.println(this.name + " received a message...");
+                    //System.out.println("msg content size = " + msg.contentSize());
                     ZFrame address = msg.pop();
-                    ZFrame content = msg.pop();
-                    assert (content != null);
-                    msg.destroy();
-
-                    LOG.log(Level.INFO, "address lenght = {0}", address.getData().length);
-                    LOG.log(Level.INFO, "content lenght = {0}", content.getData().length);
-
+                    // worker.getIdentity()
+                    // LOG.log(Level.INFO, "address lenght = {0}", address.getData().length);
+                    // System.out.println("address lenght = " + address.getData().length);
+                    // LOG.log(Level.INFO, "content lenght = {0}", content.getData().length);
                     identityBuffer = ByteBuffer.wrap(address.getData());
-                    contentBuffer = ByteBuffer.wrap(content.getData());
+                    // System.out.println("msg content size after pop = " + msg.contentSize());
+                    contentBuffer = ByteBuffer.allocate((int) msg.contentSize());
+                    ZFrame content = msg.pop();
+                    contentBuffer.put(content.getData());
+                    while(content.hasMore()) {
+                        content = msg.pop();
+                        contentBuffer.put(content.getData());
+                    }
+                    
+                    msg.destroy();
+                    contentBuffer.flip();
+                    
+                    // contentBuffer = ByteBuffer.wrap(content.getData());
 
                     ZreMessage identityMessage = ZreMessage.unpackConnect(identityBuffer);
-                    this.listner.onMessage(identityMessage);
+                    // this.listner.onMessage(identityMessage);
+                    System.out.println("Peer Identity : " + identityMessage.toString());
 
-                    Peer peer = instance.peers.get(identityMessage.getUuid());
-
-                    ZreMessage contentMessage = null;
                     int signature = ZreUtil.getNumber2(contentBuffer);
 
                     if (signature != 0xAAA1) {
+                        LOG.log(Level.WARNING, "Peer {0} signature incorrect ",
+                                identityMessage.getUuid().toString());
                         continue;
                     }
                     int id = ZreUtil.getNumber1(contentBuffer);
@@ -322,120 +368,72 @@ public class Jyre implements ZreBeacon.Listener {
                     int version = ZreUtil.getNumber1(contentBuffer);
                     LOG.log(Level.FINE, "Version = {0}", version);
                     if (version != ZreConstants.VERSION) {
+                        LOG.log(Level.WARNING, "Peer {0} message version incorrect ",
+                                identityMessage.getUuid().toString());
                         //TODO Throw Exception
                         continue;
                     }
-                    if (id != ZreEventType.HELLO && (peer == null || peer.ready)) {
-                        LOG.log(Level.SEVERE, "Invalid sequence from peer {0}",
+
+                    Peer peer = this.instance.peers.get(identityMessage.getUuid().toString());
+
+                    if (peer == null) {
+                        System.out.println("Message are coming from unkowen peer " + identityMessage.getUuid().toString());
+                        System.out.println("ROUTER CREATE NEW PEER...");
+                        peer = new Peer(identityMessage.getUuid(), instance);
+                        peers.put(identityMessage.getUuid().toString(), peer);
+                    }
+
+                    peer.refresh();
+                    /*if (id != ZreEventType.HELLO && (peer == null || !peer.ready)) {
+                        LOG.log(Level.WARNING, "Invalid sequence from peer {0}",
                                 identityMessage.getUuid().toString());
                         continue;
-                    }
+                    }*/
                     switch (id) {
                         case ZreEventType.HELLO: //Greeting
-                            contentMessage = ZreMessage.unpackHello(contentBuffer);
-                            if (peer == null) {
-                                peer = new Peer(contentMessage.getEndpoint(),
-                                        identityMessage.getUuid(), instance);
-                                peer.groups.addAll(Arrays.asList(contentMessage.getGroups()));
-                                instance.leaveAllGroups(peer);
-                                instance.joinMyGroups(peer);
-                                peer.name = contentMessage.getName();
-
-                                if (contentMessage.getHeaders() != null) {
-                                    peer.headers.putAll(contentMessage.getHeaders());
-                                }
-
-                                instance.peers.put(peer.uuid.toString(), peer);
-
-                                try {
-                                    peer.connect();
-                                    peer.refresh();
-                                    peer.sayHello();
-                                    peer.messageLost(contentMessage);
-                                    peer.ready = true;
-                                    LOG.log(Level.INFO, "{0} peer entered", peer.name);
-
-                                } catch (IOException ex) {
-                                    LOG.log(Level.SEVERE, null, ex);
-                                }
-
-                            } else {
-                                peer.messageLost(contentMessage);
-                                peer.groups.clear();
-                                peer.groups.addAll(Arrays.asList(contentMessage.getGroups()));
-                                instance.leaveAllGroups(peer);
-                                instance.joinMyGroups(peer);
-                                peer.name = contentMessage.getName();
-
-                                if (contentMessage.getHeaders() != null) {
-                                    peer.headers.clear();
-                                    peer.headers.putAll(contentMessage.getHeaders());
-                                }
-                                peer.ready = true;
-                                LOG.log(Level.INFO, "{0} peer entered", peer.name);
-                            }
+                            this.processHelloMessage(peer, identityMessage, contentBuffer);
                             break;
                         case ZreEventType.WHISPER:
-                            contentMessage = ZreMessage.unpackWhisper(contentBuffer);
-                            peer.messageLost(contentMessage);
-                            this.listner.onMessage(contentMessage);
+                            if (peer.ready) {
+                                this.processWhisperMessage(peer, contentBuffer);
+                            }
                             break;
                         case ZreEventType.SHOUT:
-                            contentMessage = ZreMessage.unpackShout(contentBuffer);
-                            peer.messageLost(contentMessage);
-                            this.listner.onMessage(contentMessage);
+                            if (peer.ready) {
+                                this.processShoutMessage(peer, contentBuffer);
+                            }
                             break;
                         case ZreEventType.JOIN:
-                            contentMessage = ZreMessage.unpackJoin(contentBuffer);
-                            peer.messageLost(contentMessage);
-                            peer.groups.add(contentMessage.getGroup());
-                            Set<String> team = instance.peersGroups.get(contentMessage.getGroup());
-                            if (team == null) {
-                                team = new HashSet<>();
-                                instance.peersGroups.put(contentMessage.getGroup(), team);
+                            if (peer.ready) {
+                                this.processJoinMessage(peer, contentBuffer);
                             }
-                            team.add(peer.uuid.toString());
-                            LOG.log(Level.INFO, "Peer {0} joined group {1}",
-                                    new Object[]{peer.name, contentMessage.getGroup()});
                             break;
                         case ZreEventType.LEAVE:
-                            contentMessage = ZreMessage.unpackLeave(contentBuffer);
-                            peer.messageLost(contentMessage);
-                            peer.groups.remove(contentMessage.getGroup());
-                            Set<String> myTeam = instance.peersGroups.get(contentMessage.getGroup());
-                            if (myTeam != null) {
-                                myTeam.remove(peer.uuid.toString());
+                            if (peer.ready) {
+                                this.processLeaveMessage(peer, contentBuffer);
                             }
-                            LOG.log(Level.INFO, "Peer {0} leaved group {1}",
-                                    new Object[]{peer.name, contentMessage.getGroup()});
                             break;
                         case ZreEventType.PING:
-                            contentMessage = ZreMessage.unpackPing(contentBuffer);
-                            peer.messageLost(contentMessage);
-                            LOG.log(Level.INFO, "Receive ping from {0}", peer.name);
-
-                            try {
-                                peer.PingOk();
-                            } catch (IOException ex) {
-                                Logger.getLogger(Jyre.class.getName()).log(Level.SEVERE, null, ex);
+                            if (peer.ready) {
+                                this.processPingMessage(peer, contentBuffer);
                             }
-
                             break;
-
                         case ZreEventType.PING_OK:
-                            contentMessage = ZreMessage.unpackPingOk(contentBuffer);
-                            peer.messageLost(contentMessage);
-                            LOG.log(Level.INFO, "Receive ping ok from {0}", peer.name);
+                            if (peer.ready) {
+                                this.processPingOkMessage(peer, contentBuffer);
+                            }
                             break;
                         default:
                             byte[] data = ZreUtil.getMessage(contentBuffer);
-                            LOG.log(Level.INFO, "remaining = {0}", new String(data, ZMQ.CHARSET));
+                            LOG.log(Level.WARNING, "UNKNOWEN MESSAGE DATA TYPE {0}: data = {1}",
+                                    new Object[]{id, new String(data, ZMQ.CHARSET)});
                             break;
                         //TODO Throw Exception
                     }
                     /*if (contentMessage != null) {
                         this.listner.onMessage(contentMessage);
                     }*/
+                    System.out.println("cleaning address and content...");
                     identityBuffer.clear();
                     contentBuffer.clear();
                     address.send(worker, ZFrame.REUSE + ZFrame.MORE);
@@ -443,11 +441,113 @@ public class Jyre implements ZreBeacon.Listener {
                     address.destroy();
                     content.destroy();
                 }
-            } /*catch (ZMQException e) {
-                LOG.log(Level.SEVERE, null, e);
-            }*/ finally {
+            } catch (ZMQException e) {
+                LOG.log(Level.WARNING, e.toString());
+            } finally {
+                System.out.println("Closing " + this.name);
                 worker.close();
             }
+        }
+
+        private void processHelloMessage(Peer peer, ZreMessage identityMessage, ByteBuffer contentBuffer) {
+            System.out.println("Processing hello message from " + peer.uuid.toString());
+            try {
+                ZreMessage contentMessage = ZreMessage.unpackHello(contentBuffer);
+                
+                peer.checkMessageHasBeenLost(contentMessage);
+                instance.leaveMyGroups(peer);
+                peer.groups.clear();
+                peer.groups.addAll(Arrays.asList(contentMessage.getGroups()));
+                // instance.leaveAllGroups(peer);
+                instance.joinMyGroups(peer);
+                peer.name = contentMessage.getName();
+                peer.setEndpoint(contentMessage.getEndpoint());
+                peer.status = contentMessage.getStatus();
+                
+                if (contentMessage.getHeaders() != null) {
+                    peer.headers.clear();
+                    peer.headers.putAll(contentMessage.getHeaders());
+                }
+                if (!peer.connected) {
+                    System.out.println("Receiving hello message from disconnected peer try to connect...");
+                    peer.connect();
+                    peer.sayHello();
+                }
+                peer.ready = true;
+                // LOG.log(Level.INFO, "{0} peer entered", peer.name);
+                System.out.println(peer.name + " peer entered");
+            } catch (IOException iOException) {
+                LOG.log(Level.SEVERE, iOException.getMessage());
+            }
+
+        }
+
+        private void processWhisperMessage(Peer peer, ByteBuffer contentBuffer) {
+            System.out.println("Processing whisper message from " + peer.uuid.toString());
+            ZreMessage contentMessage = ZreMessage.unpackWhisper(contentBuffer);
+            peer.checkMessageHasBeenLost(contentMessage);
+            this.listner.onMessage(contentMessage);
+            
+        }
+
+        private void processShoutMessage(Peer peer, ByteBuffer contentBuffer) {
+            System.out.println("Processing shout message from " + peer.uuid.toString());
+            ZreMessage contentMessage = ZreMessage.unpackShout(contentBuffer);
+            peer.checkMessageHasBeenLost(contentMessage);
+            this.listner.onMessage(contentMessage);
+            
+        }
+
+        private void processJoinMessage(Peer peer, ByteBuffer contentBuffer) {
+            System.out.println("Processing join message from " + peer.uuid.toString());
+            ZreMessage contentMessage = ZreMessage.unpackJoin(contentBuffer);
+            peer.checkMessageHasBeenLost(contentMessage);
+            peer.groups.add(contentMessage.getGroup());
+            Set<String> team = instance.peersGroups.get(contentMessage.getGroup());
+            if (team == null) {
+                team = new HashSet<>();
+                instance.peersGroups.put(contentMessage.getGroup(), team);
+            }
+            team.add(peer.uuid.toString());
+            /*LOG.log(Level.INFO, "Peer {0} joined group {1}",
+                    new Object[]{peer.name, contentMessage.getGroup()});*/
+            System.out.println("Peer " + peer.name + " joined group " + contentMessage.getGroup());
+        }
+
+        private void processLeaveMessage(Peer peer, ByteBuffer contentBuffer) {
+            System.out.println("Processing leave message from " + peer.uuid.toString());
+            ZreMessage contentMessage = ZreMessage.unpackLeave(contentBuffer);
+            peer.checkMessageHasBeenLost(contentMessage);
+            peer.groups.remove(contentMessage.getGroup());
+            Set<String> myTeam = instance.peersGroups.get(contentMessage.getGroup());
+            if (myTeam != null) {
+                myTeam.remove(peer.uuid.toString());
+            }
+            /*LOG.log(Level.INFO, "Peer {0} leaved group {1}",
+                    new Object[]{peer.name, contentMessage.getGroup()});*/
+            System.out.println("Peer " + peer.name + " leaved group " + contentMessage.getGroup());
+        }
+
+        private void processPingMessage(Peer peer, ByteBuffer contentBuffer) {
+            System.out.println("Processing ping message from " + peer.uuid.toString());
+            ZreMessage contentMessage = ZreMessage.unpackPing(contentBuffer);
+            peer.checkMessageHasBeenLost(contentMessage);
+            // LOG.log(Level.INFO, "Receive ping from {0}", peer.name);
+            System.out.println("Receive ping from " + peer.name);
+
+            try {
+                peer.PingOk();
+            } catch (IOException ex) {
+                LOG.log(Level.SEVERE, ex.getMessage());
+            }
+        }
+
+        private void processPingOkMessage(Peer peer, ByteBuffer contentBuffer) {
+            System.out.println("Processing PingOK message from " + peer.uuid.toString());
+            ZreMessage contentMessage = ZreMessage.unpackPingOk(contentBuffer);
+            peer.checkMessageHasBeenLost(contentMessage);
+            // LOG.log(Level.INFO, "Receive ping ok from {0}", peer.name);
+            System.out.println("Receive ping ok from " + peer.name);
         }
 
     }

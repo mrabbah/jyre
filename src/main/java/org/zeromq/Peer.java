@@ -1,14 +1,8 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package org.zeromq;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -26,7 +20,7 @@ public class Peer {
 
     public UUID uuid; // Identity UUID
     public String name = "notset"; // Peer's public name
-    public String endpoint; // Endpoint connected to
+    private String endpoint; // Endpoint connected to
     private Jyre instance;
     public final Set<String> groups = new HashSet<>();
     public int status = 0; // Our status counter
@@ -35,7 +29,7 @@ public class Peer {
     public boolean connected = false; // Peer will send messages
     public boolean ready = false; // Peer has said Hello to us
     public int sentSequence = 0; // Outgoing message sequence
-    public int wantSsequence = 0; // Incoming message sequence
+    public int wantSsequence = 1; // Incoming message sequence
     public long evasiveAt = 0; // Peer is being evasive
     public long expiredAt = 0; // Peer has expired by nows
     private Socket dealer;
@@ -61,6 +55,12 @@ public class Peer {
         this.name = peerUUID.toString();
     }
 
+    public Peer(UUID peerUUID, Jyre instance) {
+        this.uuid = peerUUID;
+        this.instance = instance;
+        this.name = peerUUID.toString();
+    }
+    
     @Override
     protected void finalize() throws Throwable {
         super.finalize();
@@ -138,8 +138,9 @@ public class Peer {
             LOG.log(Level.SEVERE, "{0} cannot send hello to peer {1} address not yet set",
                     new Object[]{instance.uuid.toString(), uuid.toString()});
         } else {
-            LOG.log(Level.INFO, "{0} sending hello to peer {1}", 
-                new Object[]{instance.uuid.toString(), uuid.toString()});
+            /*LOG.log(Level.INFO, "{0} sending hello to peer {1}", 
+                new Object[]{instance.uuid.toString(), uuid.toString()});*/
+            System.out.println("Sending hello to peer " + uuid.toString());
             ByteArrayOutputStream baos = initMessage(ZreEventType.HELLO);
             
             ZreMessage.packHello(baos, ++sentSequence % 65535 , instance.getEndpoint(),
@@ -194,17 +195,19 @@ public class Peer {
     }
 
     public void PingOk() throws IOException {
-        LOG.log(Level.INFO, "{0} Ping OK peer {1}", 
-                new Object[]{instance.uuid.toString(), uuid.toString()});
+        /*LOG.log(Level.INFO, "{0} Ping OK peer {1}", 
+                new Object[]{instance.uuid.toString(), uuid.toString()});*/
+        System.out.println("Sending Ping OK to peer " + uuid.toString());
         ByteArrayOutputStream baos = initMessage(ZreEventType.PING_OK);
         ZreMessage.packPingOk(baos, ++sentSequence % 65535);
         this.sendMessage(baos);
     }
     
-    public boolean messageLost(ZreMessage msg) {
-        LOG.log(Level.INFO, "{0} recv {1} from peer={2} sequence={3}",
+    public boolean checkMessageHasBeenLost(ZreMessage msg) {
+        /*LOG.log(Level.INFO, "{0} recv {1} from peer={2} sequence={3}",
                 new Object[]{instance.uuid.toString(), ZreEventType.toString(msg.getEventType()),
-                uuid.toString(), msg.getSequence()});
+                uuid.toString(), msg.getSequence()});*/
+        System.out.print("Checking if any messages from " + this.uuid.toString()+ " has been lost, message sequence = " + msg.getSequence());
         if(msg.getEventType() == ZreEventType.HELLO) {
             this.wantSsequence = 1;
         } else {
@@ -212,6 +215,7 @@ public class Peer {
             this.wantSsequence = this.wantSsequence % 65535;
             
         }
+        System.out.println(" want sequence = " + this.wantSsequence);
         if(msg.getSequence() != this.wantSsequence) {
             LOG.log(Level.WARNING, "{0} seq error from peer={1} expect={2}, got={3}",
                 new Object[]{instance.uuid.toString(), uuid.toString(),
@@ -221,4 +225,15 @@ public class Peer {
         return false;
     }
 
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    public void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
+        String[] endpoints = endpoint.split(":");
+        this.mailBoxPort = Integer.valueOf(endpoints[2]);
+    }
+
+    
 }

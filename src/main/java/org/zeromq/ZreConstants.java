@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package org.zeromq;
 
 /**
@@ -20,5 +15,5 @@ public class ZreConstants {
     public static final int PEER_EXPIRED = 30000; //Peer expire after 30s if he didn't contact us
     public static final int PEER_EVASIVE = 10000; // Mark evasive after 10s
     public static final int NB_MESSAGE_TO_SEND_PER_SECONDS = 100;
-    
+    public static final int DEFAULT_NB_WORKERS = 5;
 }
