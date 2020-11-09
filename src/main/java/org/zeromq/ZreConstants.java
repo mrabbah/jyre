@@ -14,6 +14,7 @@ public class ZreConstants {
     public static final String DEFAULT_LISTENING_INTERFACE = "*";
     public static final int PEER_EXPIRED = 30000; //Peer expire after 30s if he didn't contact us
     public static final int PEER_EVASIVE = 10000; // Mark evasive after 10s
+    public static final int REGULAR_CHECK_INTERVAL = 20000; //Check peer presence every 20s
     public static final int NB_MESSAGE_TO_SEND_PER_SECONDS = 100;
-    public static final int DEFAULT_NB_WORKERS = 5;
+    public static final int DEFAULT_NB_WORKERS = 1;
 }

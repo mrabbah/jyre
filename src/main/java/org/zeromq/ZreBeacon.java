@@ -194,7 +194,7 @@ public class ZreBeacon {
     /**
      * All beacons with matching prefix are passed to a listener.
      */
-    public interface Listener {
+    protected interface Listener {
 
         void onBeacon(InetAddress sender, UUID remoteUuid, int remoteMailBoxPort, byte[] data);
     }
