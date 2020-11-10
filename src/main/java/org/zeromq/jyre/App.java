@@ -8,7 +8,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.zeromq.Jyre;
 import org.zeromq.Peer;
-import org.zeromq.ZMQ;
 
 /**
  * JYRE MAIN APP
@@ -34,10 +33,12 @@ public class App {
             System.out.println("Node uuid = " + instance.getUuid().toString()
                     + " name = " + instance.getName());
             instance.start();
-            zmq.ZMQ.sleep(1, TimeUnit.HOURS);
+            zmq.ZMQ.sleep(10, TimeUnit.SECONDS);
         } catch (IOException iOException) {
             iOException.printStackTrace();
         } catch (InterruptedException interruptedException) {
+            interruptedException.printStackTrace();
+        } finally {
             if (instance != null) {
                 try {
                     instance.disconnect();

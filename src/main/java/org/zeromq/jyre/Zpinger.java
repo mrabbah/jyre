@@ -28,7 +28,7 @@ public class Zpinger {
                             new String(msg, ZMQ.CHARSET));*/
                     switch (eventType) {
                         case ZreEventType.HELLO:
-                            System.out.println("Receiving hello -> sending whisper");
+                            //System.out.println("Receiving hello -> sending whisper");
                             try {
                                 instance.whisper(peer.uuid.toString(), "Hello".getBytes(ZMQ.CHARSET));
                             } catch (IOException ex) {
@@ -64,6 +64,8 @@ public class Zpinger {
         } catch (IOException iOException) {
             iOException.printStackTrace();
         } catch (InterruptedException interruptedException) {
+            interruptedException.printStackTrace();
+        } finally {
             if (node != null) {
                 try {
                     node.disconnect();

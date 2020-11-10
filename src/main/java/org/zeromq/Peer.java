@@ -87,7 +87,7 @@ public class Peer {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ZreMessage.packConnect(baos, instance.uuid);
             dealer.setIdentity(baos.toByteArray());
-            LOG.log(Level.INFO
+            LOG.log(Level.FINE
                     , "connecting to peer {0} on {1}", new Object[]{uuid.toString(), endpoint});
             dealer.connect(this.endpoint);
             this.connected = true;
@@ -99,7 +99,7 @@ public class Peer {
 
     public void disconnect() {
         if (this.connected) {
-            LOG.log(Level.INFO, "{0} Disconnecting peer {1}", 
+            LOG.log(Level.FINE, "{0} Disconnecting peer {1}", 
                     new Object[]{instance.uuid.toString(), uuid.toString()});
             
             dealer.close();
@@ -172,9 +172,9 @@ public class Peer {
             LOG.log(Level.SEVERE, "{0} cannot send hello to peer {1} address not yet set",
                     new Object[]{instance.uuid.toString(), uuid.toString()});
         } else {
-            /*LOG.log(Level.INFO, "{0} sending hello to peer {1}", 
+            /*LOG.log(Level.FINE, "{0} sending hello to peer {1}", 
                 new Object[]{instance.uuid.toString(), uuid.toString()});*/
-            System.out.println("Sending hello to peer " + uuid.toString());
+            //System.out.println("Sending hello to peer " + uuid.toString());
             ByteArrayOutputStream baos = initMessage(ZreEventType.HELLO);
             
             ZreMessage.packHello(baos, getSequence() , instance.getEndpoint(),
@@ -187,7 +187,7 @@ public class Peer {
     }
 
     public void whisper(byte[] msg) throws IOException {
-        LOG.log(Level.INFO, "{0} whisper peer {1}", 
+        LOG.log(Level.FINE, "{0} whisper peer {1}", 
                 new Object[]{instance.uuid.toString(), uuid.toString()});
         ByteArrayOutputStream baos1 = initMessage(ZreEventType.WHISPER);
         ZreUtil.setNumber2(baos1, getSequence());
@@ -198,7 +198,7 @@ public class Peer {
 
     public void shout(String group, byte[] msg) throws IOException {
         // if (groups.contains(group)) {
-            LOG.log(Level.INFO, "{0} shout peer {1} since it belongs to {2}", 
+            LOG.log(Level.FINE, "{0} shout peer {1} since it belongs to {2}", 
                     new Object[]{instance.uuid.toString(), uuid.toString(), group});
             ByteArrayOutputStream baos1 = initMessage(ZreEventType.SHOUT);
             ZreUtil.setNumber2(baos1, getSequence());
@@ -210,7 +210,7 @@ public class Peer {
     }
 
     public void join(String group) throws IOException {
-        LOG.log(Level.INFO, "{0} sent join group {1} to peer {2}", 
+        LOG.log(Level.FINE, "{0} sent join group {1} to peer {2}", 
                 new Object[]{instance.uuid.toString(), group, uuid.toString()});
         ByteArrayOutputStream baos = initMessage(ZreEventType.JOIN);
         ZreMessage.packJoin(baos, getSequence(), group, nextStatus());
@@ -218,7 +218,7 @@ public class Peer {
     }
 
     public void Leave(String group) throws IOException {
-        LOG.log(Level.INFO, "{0} sent leave group {1} to peer {2}", 
+        LOG.log(Level.FINE, "{0} sent leave group {1} to peer {2}", 
                 new Object[]{instance.uuid.toString(), group, uuid.toString()});
         ByteArrayOutputStream baos = initMessage(ZreEventType.LEAVE);
         ZreMessage.packLeave(baos, getSequence(), group, nextStatus());
@@ -226,7 +226,7 @@ public class Peer {
     }
 
     public void Ping() throws IOException {
-        LOG.log(Level.INFO, "{0} Ping peer {1}", 
+        LOG.log(Level.FINE, "{0} Ping peer {1}", 
                 new Object[]{instance.uuid.toString(), uuid.toString()});
         ByteArrayOutputStream baos = initMessage(ZreEventType.PING);
         ZreMessage.packPing(baos, getSequence());
@@ -234,19 +234,19 @@ public class Peer {
     }
 
     public void PingOk() throws IOException {
-        /*LOG.log(Level.INFO, "{0} Ping OK peer {1}", 
+        /*LOG.log(Level.FINE, "{0} Ping OK peer {1}", 
                 new Object[]{instance.uuid.toString(), uuid.toString()});*/
-        System.out.println("Sending Ping OK to peer " + uuid.toString());
+        //System.out.println("Sending Ping OK to peer " + uuid.toString());
         ByteArrayOutputStream baos = initMessage(ZreEventType.PING_OK);
         ZreMessage.packPingOk(baos, getSequence());
         this.sendMessage(baos);
     }
     
     public boolean checkMessageHasBeenLost(ZreMessage msg) {
-        /*LOG.log(Level.INFO, "{0} recv {1} from peer={2} sequence={3}",
+        /*LOG.log(Level.FINE, "{0} recv {1} from peer={2} sequence={3}",
                 new Object[]{instance.uuid.toString(), ZreEventType.toString(msg.getEventType()),
                 uuid.toString(), msg.getSequence()});*/
-        System.out.print("Checking if any messages from " + this.uuid.toString()+ " has been lost, message sequence = " + msg.getSequence());
+        //System.out.print("Checking if any messages from " + this.uuid.toString()+ " has been lost, message sequence = " + msg.getSequence());
         if(msg.getEventType() == ZreEventType.HELLO) {
             this.wantSsequence = 1;
         } else {
@@ -254,7 +254,7 @@ public class Peer {
             this.wantSsequence = this.wantSsequence % 65535;
             
         }
-        System.out.println(" want sequence = " + this.wantSsequence);
+        //System.out.println(" want sequence = " + this.wantSsequence);
         if(msg.getSequence() != this.wantSsequence) {
             LOG.log(Level.WARNING, "{0} seq error from peer={1} expect={2}, got={3}",
                 new Object[]{instance.uuid.toString(), uuid.toString(),

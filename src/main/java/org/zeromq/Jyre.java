@@ -83,8 +83,6 @@ public class Jyre implements ZreBeacon.Listener {
     
     public void start() throws IOException, InterruptedException {
         if (!isRunning.get()) {
-            //int newMailBoxPort = Utils.findOpenPort();
-            // mailBoxPort.set(newMailBoxPort);
             if (zreRouter.thread == null) {
                 zreRouter.thread = new Thread(zreRouter);
                 zreRouter.thread.setName("Zre Router thread "
@@ -105,6 +103,7 @@ public class Jyre implements ZreBeacon.Listener {
                 beacon.start();
             }
             if (heartbeating.thread == null) {
+                System.out.println("Starting heartbeating...");
                 heartbeating.thread = new Thread(heartbeating);
                 heartbeating.thread.setName("Heartbeating thread "
                         + uuid.toString());
@@ -188,17 +187,17 @@ public class Jyre implements ZreBeacon.Listener {
     
     public boolean shout(String group, byte[] msg) throws IOException {
         Set<String> peersUUID = peersGroups.get(group);
-        System.out.println("peers in " + group + " group = " + peersUUID);
+        System.out.println("shouting peers " + peersUUID + " in group = " + group);
         if(peersUUID == null || peersUUID.isEmpty()) {
             return false;
         }
         for(String peerUUID: peersUUID) {
             Peer peer = peers.get(peerUUID);
-            System.out.println("Sending to peer " + peer + " in group " + group);
+            // System.out.println("Sending to peer " + peer + " in group " + group);
             if(peer != null) {
                 peer.shout(group, msg);
             } else {
-                LOG.log(Level.SEVERE, "peer " + peerUUID + " not found in group " + group);
+                LOG.log(Level.WARNING, "peer " + peerUUID + " not found in group " + group);
                 peers.remove(peerUUID);
             }
         }
@@ -371,9 +370,9 @@ public class Jyre implements ZreBeacon.Listener {
                 ByteBuffer contentBuffer;
                 while (!Thread.currentThread().isInterrupted() && instance.isRunning.get()) {
                     //  The DEALER socket gives us the address envelope and message
-                    System.out.println(this.name + " waiting to receive a message...");
+                    // System.out.println(this.name + " waiting to receive a message...");
                     ZMsg msg = ZMsg.recvMsg(worker);
-                    System.out.println(this.name + " received a message...");
+                    // System.out.println(this.name + " received a message...");
                     //System.out.println("msg content size = " + msg.contentSize());
                     ZFrame address = msg.pop();
                     // worker.getIdentity()
@@ -396,7 +395,7 @@ public class Jyre implements ZreBeacon.Listener {
                     // contentBuffer = ByteBuffer.wrap(content.getData());
                     ZreMessage identityMessage = ZreMessage.unpackConnect(identityBuffer);
                     // this.listner.onMessage(identityMessage);
-                    System.out.println("Peer Identity : " + identityMessage.toString());
+                    // System.out.println("Peer Identity : " + identityMessage.toString());
                     
                     int signature = ZreUtil.getNumber2(contentBuffer);
                     
@@ -406,9 +405,9 @@ public class Jyre implements ZreBeacon.Listener {
                         continue;
                     }
                     int id = ZreUtil.getNumber1(contentBuffer);
-                    LOG.log(Level.FINE, "Message type (ID) = {0}", id);
+                    // LOG.log(Level.FINE, "Message type (ID) = {0}", id);
                     int version = ZreUtil.getNumber1(contentBuffer);
-                    LOG.log(Level.FINE, "Version = {0}", version);
+                    // LOG.log(Level.FINE, "Version = {0}", version);
                     if (version != ZreConstants.VERSION) {
                         LOG.log(Level.WARNING, "Peer {0} message version incorrect ",
                                 identityMessage.getUuid().toString());
@@ -475,7 +474,7 @@ public class Jyre implements ZreBeacon.Listener {
                     /*if (contentMessage != null) {
                         this.listner.onMessage(contentMessage);
                     }*/
-                    System.out.println("cleaning address and content...");
+                    // System.out.println("cleaning address and content...");
                     identityBuffer.clear();
                     contentBuffer.clear();
                     address.send(worker, ZFrame.REUSE + ZFrame.MORE);
@@ -492,7 +491,7 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processHelloMessage(Peer peer, ZreMessage identityMessage, ByteBuffer contentBuffer) {
-            System.out.println("Processing hello message from " + peer.uuid.toString());
+            // System.out.println("Processing hello message from " + peer.uuid.toString());
             try {
                 ZreMessage contentMessage = ZreMessage.unpackHello(contentBuffer);
                 
@@ -526,7 +525,7 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processWhisperMessage(Peer peer, ByteBuffer contentBuffer) {
-            System.out.println("Processing whisper message from " + peer.uuid.toString());
+            // System.out.println("Processing whisper message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackWhisper(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
             instance.listner.onMessage(peer, ZreEventType.WHISPER, null, contentMessage.getMsg(), instance);
@@ -534,7 +533,7 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processShoutMessage(Peer peer, ByteBuffer contentBuffer) {
-            System.out.println("Processing shout message from " + peer.uuid.toString());
+            // System.out.println("Processing shout message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackShout(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
             if (instance.groups.contains(contentMessage.getGroup())) {
@@ -543,7 +542,7 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processJoinMessage(Peer peer, ByteBuffer contentBuffer) {
-            System.out.println("Processing join message from " + peer.uuid.toString());
+            // System.out.println("Processing join message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackJoin(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
             peer.groups.add(contentMessage.getGroup());
@@ -559,7 +558,7 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processLeaveMessage(Peer peer, ByteBuffer contentBuffer) {
-            System.out.println("Processing leave message from " + peer.uuid.toString());
+            // System.out.println("Processing leave message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackLeave(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
             peer.groups.remove(contentMessage.getGroup());
@@ -573,7 +572,7 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processPingMessage(Peer peer, ByteBuffer contentBuffer) {
-            System.out.println("Processing ping message from " + peer.uuid.toString());
+            // System.out.println("Processing ping message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackPing(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
             // LOG.log(Level.INFO, "Receive ping from {0}", peer.name);
@@ -587,9 +586,10 @@ public class Jyre implements ZreBeacon.Listener {
         }
         
         private void processPingOkMessage(Peer peer, ByteBuffer contentBuffer) {
-            System.out.println("Processing PingOK message from " + peer.uuid.toString());
+            // System.out.println("Processing PingOK message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackPingOk(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
+            peer.refresh();
             // LOG.log(Level.INFO, "Receive ping ok from {0}", peer.name);
             System.out.println("Receive ping ok from " + peer.name);
         }
@@ -616,12 +616,11 @@ public class Jyre implements ZreBeacon.Listener {
                     for (Peer peer : peers) {
                         if (now > peer.expiredAt) {
                             System.out.println(peer.name + " peer exited");
-                            System.out.println("Disconnecting peer " + peer.name);
                             peer.disconnect();
                             instance.leaveMyGroups(peer);
                             instance.peers.remove(peer.uuid.toString());
                         } else if (now > peer.evasiveAt) {
-                            System.out.println(peer.name + " peer disapear from matrix try to ping it");
+                            System.out.println(peer.name + " peer disapear from matrix");
                             peer.Ping();
                         }
                     }
