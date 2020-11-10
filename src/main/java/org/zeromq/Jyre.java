@@ -278,7 +278,7 @@ public class Jyre implements ZreBeacon.Listener {
             partners.add(peer.uuid.toString());
         }
     }
-    
+
     private class ZreRouter implements Runnable {
         
         private Thread thread;
@@ -516,6 +516,7 @@ public class Jyre implements ZreBeacon.Listener {
                 peer.ready = true;
                 // LOG.log(Level.INFO, "{0} peer entered", peer.name);
                 System.out.println(peer.name + " peer entered");
+                instance.listner.onMessage(peer, ZreEventType.HELLO, null, null, instance);
             } catch (IOException iOException) {
                 LOG.log(Level.SEVERE, iOException.getMessage());
             }
@@ -526,7 +527,7 @@ public class Jyre implements ZreBeacon.Listener {
             System.out.println("Processing whisper message from " + peer.uuid.toString());
             ZreMessage contentMessage = ZreMessage.unpackWhisper(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
-            instance.listner.onMessage(peer, contentMessage.getMsg());
+            instance.listner.onMessage(peer, ZreEventType.WHISPER, null, contentMessage.getMsg(), instance);
             
         }
         
@@ -535,7 +536,7 @@ public class Jyre implements ZreBeacon.Listener {
             ZreMessage contentMessage = ZreMessage.unpackShout(contentBuffer);
             peer.checkMessageHasBeenLost(contentMessage);
             if (instance.groups.contains(contentMessage.getGroup())) {
-                instance.listner.onMessage(peer, contentMessage.getMsg());
+                instance.listner.onMessage(peer, ZreEventType.SHOUT, contentMessage.getGroup(), contentMessage.getMsg(), instance);
             }
         }
         
@@ -640,7 +641,7 @@ public class Jyre implements ZreBeacon.Listener {
      */
     public interface JyreListener {
         
-        void onMessage(Peer peer, byte[] msg);
+        void onMessage(Peer peer, int eventType, String group, byte[] msg, Jyre instance);
     }
     
     public UUID getUuid() {
