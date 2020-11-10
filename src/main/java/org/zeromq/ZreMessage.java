@@ -94,8 +94,7 @@ public class ZreMessage {
         return message;
     }
 
-    public static void packWhisper(ByteArrayOutputStream baos, int sequence, byte[] msg) throws IOException {
-        ZreUtil.setNumber2(baos, sequence);
+    public static void packWhisper(ByteArrayOutputStream baos, byte[] msg) throws IOException {
         ZreUtil.setMessage(baos, msg);
     }
     
@@ -111,10 +110,8 @@ public class ZreMessage {
         return message;
     }
 
-    public static void packShout(ByteArrayOutputStream baos, int sequence,
-            String group, byte[] msg) throws IOException {
-        ZreUtil.setNumber2(baos, sequence);
-        ZreUtil.setString(baos, group);
+    public static void packShout(ByteArrayOutputStream baos,
+            byte[] msg) throws IOException {
         ZreUtil.setMessage(baos, msg);
     }
     

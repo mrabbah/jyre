@@ -8,8 +8,8 @@ import java.util.logging.Logger;
 import org.zeromq.Jyre;
 import org.zeromq.Peer;
 import org.zeromq.ZMQ;
+import org.zeromq.ZreConstants;
 import org.zeromq.ZreEventType;
-
 
 /**
  *
@@ -27,25 +27,24 @@ public class Zpinger {
                             peer.name + " msg = " + 
                             new String(msg, ZMQ.CHARSET));*/
                     switch (eventType) {
-                        case ZreEventType.HELLO: 
+                        case ZreEventType.HELLO:
                             System.out.println("Receiving hello -> sending whisper");
                             try {
                                 instance.whisper(peer.uuid.toString(), "Hello".getBytes(ZMQ.CHARSET));
                             } catch (IOException ex) {
                                 ex.printStackTrace();
                             }
-                        
-                        break;
+
+                            break;
 
                         case ZreEventType.WHISPER:
                             System.out.println(instance.getName() + " received ping (WHISPER)");
-                             
-                                try {
-                                    instance.shout("GLOBAL", "Hello".getBytes(ZMQ.CHARSET));
-                                } catch (IOException ex) {
-                                    ex.printStackTrace();
-                                }
-                            
+                            try {
+                                instance.shout(ZreConstants.DEFAULT_GROUP, "Hello".getBytes(ZMQ.CHARSET));
+                            } catch (IOException ex) {
+                                ex.printStackTrace();
+                            }
+
                             break;
 
                         case ZreEventType.SHOUT:

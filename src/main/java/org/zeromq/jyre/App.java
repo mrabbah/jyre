@@ -24,9 +24,10 @@ public class App {
             instance = Jyre.getInstance(new Jyre.JyreListener() {
                 @Override
                 public void onMessage(Peer peer, int eventType, String group, byte[] msg, Jyre node) {
-                    System.out.println("receiving message from " + 
+                    /*System.out.println("receiving message from " + 
                             peer.name + " msg = " + 
-                            new String(msg, ZMQ.CHARSET));
+                            new String(msg, ZMQ.CHARSET));*/
+                    //TODO
                 }
             }, new HashMap<>());
             

@@ -5,11 +5,11 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
@@ -22,8 +22,8 @@ public class Jyre implements ZreBeacon.Listener {
     private static final Logger LOG = Logger.getLogger(Jyre.class.getName());
     
     private ZreBeacon beacon;
-    private final Map<String, Peer> peers = new HashMap<>(); // List of all my peers
-    private final Map<String, Set<String>> peersGroups = new HashMap<>(); // List of groups and for each groupe peers uuid that belong to this group
+    private final Map<String, Peer> peers = new ConcurrentHashMap<>(); // List of all my peers
+    private final Map<String, Set<String>> peersGroups = new ConcurrentHashMap<>(); // List of groups and for each groupe peers uuid that belong to this group
     private ZreRouter zreRouter;
     private Heartbeating heartbeating;
     private static Jyre instance;
@@ -31,7 +31,7 @@ public class Jyre implements ZreBeacon.Listener {
     protected UUID uuid;
     protected String name;
     protected String address;
-    protected final Set<String> groups = new HashSet<>();
+    protected final Set<String> groups = new ConcurrentSkipListSet<>();
     protected final Map<String, String> headers;
     protected final AtomicInteger mailBoxPort = new AtomicInteger();
     protected final AtomicReference<Boolean> isRunning = new AtomicReference<>();
@@ -187,12 +187,14 @@ public class Jyre implements ZreBeacon.Listener {
     }
     
     public boolean shout(String group, byte[] msg) throws IOException {
-        Set<String> peersUUID = peersGroups.get(msg);
+        Set<String> peersUUID = peersGroups.get(group);
+        System.out.println("peers in " + group + " group = " + peersUUID);
         if(peersUUID == null || peersUUID.isEmpty()) {
             return false;
         }
         for(String peerUUID: peersUUID) {
             Peer peer = peers.get(peerUUID);
+            System.out.println("Sending to peer " + peer + " in group " + group);
             if(peer != null) {
                 peer.shout(group, msg);
             } else {
@@ -271,7 +273,7 @@ public class Jyre implements ZreBeacon.Listener {
         for (String group : peer.groups) {
             Set<String> partners = peersGroups.get(group);
             if (partners == null) {
-                partners = new HashSet<>();
+                partners = new ConcurrentSkipListSet<>();
                 peersGroups.put(group, partners);
                 
             }
@@ -502,7 +504,7 @@ public class Jyre implements ZreBeacon.Listener {
                 instance.joinMyGroups(peer);
                 peer.name = contentMessage.getName();
                 peer.setEndpoint(contentMessage.getEndpoint());
-                peer.status = contentMessage.getStatus();
+                // peer.status.contentMessage.getStatus();
                 
                 if (contentMessage.getHeaders() != null) {
                     peer.headers.clear();
@@ -547,7 +549,7 @@ public class Jyre implements ZreBeacon.Listener {
             peer.groups.add(contentMessage.getGroup());
             Set<String> team = instance.peersGroups.get(contentMessage.getGroup());
             if (team == null) {
-                team = new HashSet<>();
+                team = new ConcurrentSkipListSet<>();
                 instance.peersGroups.put(contentMessage.getGroup(), team);
             }
             team.add(peer.uuid.toString());
